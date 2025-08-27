@@ -1,0 +1,34 @@
+{
+  "name": "mcp-server-node",
+  "version": "1.0.0",
+  "description": "A comprehensive MCP (Model Context Protocol) server that exposes multiple resource types including file system, system information, and generated content",
+  "main": "index.js",
+  "bin": {
+    "mcp-server-node": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "jsonrpc",
+    "server",
+    "resources",
+    "filesystem",
+    "system-info",
+    "generated-content",
+    "claude",
+    "ai-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ]
+}

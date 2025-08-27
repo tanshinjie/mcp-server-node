@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 const readline = require('readline');
 const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 // --- Logger Setup ---
 // We'll log to a file to keep stdout clean for MCP messages.
@@ -12,45 +14,231 @@ const log = (level, message) => {
 
 class MCPServer {
     /**
-     * A simple MCP (Multi-Client Protocol) server in Node.js that communicates over stdio.
-     * It handles JSON-RPC 2.0 messages for MCP negotiations and resource reporting.
+     * A comprehensive MCP (Model Context Protocol) server that exposes multiple resource types.
+     * Provides access to files, directories, system information, and generated content.
      */
     constructor() {
         /** @private */
-        // Define which packages are supported and their enabled status
-        this.supportedPackages = {
-            'mcp-negotiate': false,
-            'dns-com-vmoo-client-info': false,
-            'mcp-resource-status': false,
-        };
-
-        /** @private */
-        // Mock resource data
-        this.resources = {
-            cpu: 0.5,
-            memory: { used: 512, total: 2048 },
-        };
-
+        this.resources = new Map();
+        
         log('info', 'MCP Server initialized.');
-        this._startResourceSimulation();
+        this._initializeResources();
     }
     
     /**
      * @private
-     * Simulates resource usage changing over time.
+     * Initialize all available resources
      */
-    _startResourceSimulation() {
-        setInterval(() => {
-            // Fluctuate CPU usage
-            this.resources.cpu = Math.random();
-            // Fluctuate memory usage
-            this.resources.memory.used = 100 + Math.floor(Math.random() * (this.resources.memory.total - 200));
-            
-            // If the package is enabled, send a notification
-            if (this.supportedPackages['mcp-resource-status']) {
-                this.sendNotification('mcp.resource.status', this.resources);
+    _initializeResources() {
+        // File system resources
+        this._registerFileResources();
+        
+        // System information resources
+        this._registerSystemResources();
+        
+        // Generated content resources
+        this._registerGeneratedResources();
+        
+        // Configuration resources
+        this._registerConfigResources();
+    }
+
+    /**
+     * @private
+     * Register file system related resources
+     */
+    _registerFileResources() {
+        this.resources.set('file://current-directory', {
+            uri: 'file://current-directory',
+            name: 'Current Directory Listing',
+            description: 'Lists files and directories in the current working directory',
+            mimeType: 'application/json',
+            getData: () => {
+                try {
+                    const cwd = process.cwd();
+                    const items = fs.readdirSync(cwd).map(item => {
+                        const fullPath = path.join(cwd, item);
+                        const stats = fs.statSync(fullPath);
+                        return {
+                            name: item,
+                            type: stats.isDirectory() ? 'directory' : 'file',
+                            size: stats.isFile() ? stats.size : null,
+                            modified: stats.mtime.toISOString()
+                        };
+                    });
+                    return JSON.stringify({ path: cwd, items }, null, 2);
+                } catch (error) {
+                    return JSON.stringify({ error: error.message });
+                }
             }
-        }, 5000); // Update every 5 seconds
+        });
+
+        this.resources.set('file://package-info', {
+            uri: 'file://package-info',
+            name: 'Package Information',
+            description: 'Information from package.json if it exists',
+            mimeType: 'application/json',
+            getData: () => {
+                try {
+                    const packagePath = path.join(process.cwd(), 'package.json');
+                    if (fs.existsSync(packagePath)) {
+                        const packageData = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+                        return JSON.stringify(packageData, null, 2);
+                    }
+                    return JSON.stringify({ message: 'No package.json found' });
+                } catch (error) {
+                    return JSON.stringify({ error: error.message });
+                }
+            }
+        });
+    }
+
+    /**
+     * @private
+     * Register system information resources
+     */
+    _registerSystemResources() {
+        this.resources.set('system://info', {
+            uri: 'system://info',
+            name: 'System Information',
+            description: 'Basic system information including OS, architecture, and Node.js version',
+            mimeType: 'application/json',
+            getData: () => {
+                return JSON.stringify({
+                    platform: os.platform(),
+                    architecture: os.arch(),
+                    nodeVersion: process.version,
+                    hostname: os.hostname(),
+                    uptime: os.uptime(),
+                    totalMemory: os.totalmem(),
+                    freeMemory: os.freemem(),
+                    cpuCount: os.cpus().length,
+                    loadAverage: os.loadavg(),
+                    userInfo: os.userInfo(),
+                    timestamp: new Date().toISOString()
+                }, null, 2);
+            }
+        });
+
+        this.resources.set('system://env', {
+            uri: 'system://env',
+            name: 'Environment Variables',
+            description: 'Non-sensitive environment variables',
+            mimeType: 'application/json',
+            getData: () => {
+                // Filter out sensitive environment variables
+                const filteredEnv = Object.keys(process.env)
+                    .filter(key => !key.toLowerCase().includes('password') && 
+                                 !key.toLowerCase().includes('secret') &&
+                                 !key.toLowerCase().includes('key') &&
+                                 !key.toLowerCase().includes('token'))
+                    .reduce((obj, key) => {
+                        obj[key] = process.env[key];
+                        return obj;
+                    }, {});
+                
+                return JSON.stringify(filteredEnv, null, 2);
+            }
+        });
+    }
+
+    /**
+     * @private
+     * Register generated content resources
+     */
+    _registerGeneratedResources() {
+        this.resources.set('generated://lorem', {
+            uri: 'generated://lorem',
+            name: 'Lorem Ipsum Text',
+            description: 'Generated Lorem Ipsum placeholder text',
+            mimeType: 'text/plain',
+            getData: () => {
+                const sentences = [
+                    'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+                    'Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+                    'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.',
+                    'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.',
+                    'Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia.',
+                    'Deserunt mollit anim id est laborum sed ut perspiciatis unde omnis.',
+                    'Iste natus error sit voluptatem accusantium doloremque laudantium.',
+                    'Totam rem aperiam eaque ipsa quae ab illo inventore veritatis.'
+                ];
+                
+                const paragraphCount = Math.floor(Math.random() * 3) + 2;
+                const paragraphs = [];
+                
+                for (let i = 0; i < paragraphCount; i++) {
+                    const sentenceCount = Math.floor(Math.random() * 4) + 3;
+                    const paragraph = [];
+                    
+                    for (let j = 0; j < sentenceCount; j++) {
+                        paragraph.push(sentences[Math.floor(Math.random() * sentences.length)]);
+                    }
+                    
+                    paragraphs.push(paragraph.join(' '));
+                }
+                
+                return paragraphs.join('\n\n');
+            }
+        });
+
+        this.resources.set('generated://data', {
+            uri: 'generated://data',
+            name: 'Sample Data',
+            description: 'Generated sample data in various formats',
+            mimeType: 'application/json',
+            getData: () => {
+                const users = [];
+                const firstNames = ['John', 'Jane', 'Bob', 'Alice', 'Charlie', 'Diana', 'Eve', 'Frank'];
+                const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis'];
+                
+                for (let i = 0; i < 5; i++) {
+                    users.push({
+                        id: i + 1,
+                        firstName: firstNames[Math.floor(Math.random() * firstNames.length)],
+                        lastName: lastNames[Math.floor(Math.random() * lastNames.length)],
+                        email: `user${i + 1}@example.com`,
+                        age: Math.floor(Math.random() * 50) + 18,
+                        active: Math.random() > 0.3,
+                        createdAt: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString()
+                    });
+                }
+                
+                return JSON.stringify({
+                    users,
+                    meta: {
+                        total: users.length,
+                        generated: new Date().toISOString()
+                    }
+                }, null, 2);
+            }
+        });
+    }
+
+    /**
+     * @private
+     * Register configuration resources
+     */
+    _registerConfigResources() {
+        this.resources.set('config://mcp-server', {
+            uri: 'config://mcp-server',
+            name: 'MCP Server Configuration',
+            description: 'Current MCP server configuration and capabilities',
+            mimeType: 'application/json',
+            getData: () => {
+                return JSON.stringify({
+                    version: '1.0.0',
+                    capabilities: {
+                        resources: true,
+                        prompts: false,
+                        tools: false
+                    },
+                    resourceCount: this.resources.size,
+                    supportedProtocols: ['stdio'],
+                    started: new Date().toISOString()
+                }, null, 2);
+            }
+        });
     }
 
 
@@ -141,7 +329,7 @@ class MCPServer {
         }
 
         // Route the request to the appropriate handler
-        const handlerName = `handle_${method.replace(/\./g, '_')}`;
+        const handlerName = `handle_${method.replace(/[\.\/]/g, '_')}`;
         const handler = this[handlerName];
 
         if (typeof handler === 'function') {
@@ -158,63 +346,78 @@ class MCPServer {
     }
 
     /**
-     * Handles the 'mcp.version' request from the client.
+     * Handles the 'initialize' request from the client.
      * @param {string|number|null} msgId
      * @param {object} params
      */
-    handle_mcp_version(msgId, params) {
-        log('info', `Handling mcp.version with params: ${JSON.stringify(params)}`);
+    handle_initialize(msgId, params) {
+        log('info', `Handling initialize with params: ${JSON.stringify(params)}`);
         const responseParams = {
-            version: '2.1',
-            min_version: '2.1',
-            packages: {
-                'mcp-negotiate': '1.0',
-                'dns-com-vmoo-client-info': '1.0',
-                'mcp-resource-status': '1.0' // Advertise the new package
+            protocolVersion: "2024-11-05",
+            capabilities: {
+                resources: {
+                    subscribe: false,
+                    listChanged: false
+                }
             },
+            serverInfo: {
+                name: "Node.js MCP Resource Server",
+                version: "1.0.0"
+            }
         };
         this.sendResponse(msgId, responseParams);
-
-        this.sendNotification('dns-com-vmoo-client-info', {
-            name: 'Node.js MCP Server with Resources',
-            version: '0.2',
-        });
     }
 
     /**
-     * Handles the 'mcp.negotiate' request.
+     * Handles the 'resources/list' request.
      * @param {string|number|null} msgId
      * @param {object} params
      */
-    handle_mcp_negotiate(msgId, params) {
-        log('info', `Handling mcp.negotiate with params: ${JSON.stringify(params)}`);
-        const packagesToEnable = params.packages || [];
-
-        for (const pkg of packagesToEnable) {
-            if (this.supportedPackages.hasOwnProperty(pkg)) {
-                this.supportedPackages[pkg] = true; // Enable the package
-                log('info', `Package '${pkg}' enabled.`);
-            } else {
-                log('warn', `Client requested unsupported package: ${pkg}`);
-            }
-        }
-
-        this.sendResponse(msgId, {});
+    handle_resources_list(msgId, params) {
+        log('info', `Handling resources/list request.`);
+        const resourceList = Array.from(this.resources.values()).map(resource => ({
+            uri: resource.uri,
+            name: resource.name,
+            description: resource.description,
+            mimeType: resource.mimeType
+        }));
+        
+        this.sendResponse(msgId, { resources: resourceList });
     }
-    
+
     /**
-     * Handles the 'mcp.resource.status' request.
+     * Handles the 'resources/read' request.
      * @param {string|number|null} msgId
      * @param {object} params
      */
-    handle_mcp_resource_status(msgId, params) {
-        log('info', `Handling mcp.resource.status request.`);
-        if (!this.supportedPackages['mcp-resource-status']) {
-            this.sendError(msgId, -32001, 'Package mcp-resource-status not negotiated.');
+    handle_resources_read(msgId, params) {
+        log('info', `Handling resources/read with params: ${JSON.stringify(params)}`);
+        const { uri } = params;
+        
+        if (!uri) {
+            this.sendError(msgId, -32602, 'Missing required parameter: uri');
             return;
         }
-        // Respond with the current resource status
-        this.sendResponse(msgId, this.resources);
+
+        const resource = this.resources.get(uri);
+        if (!resource) {
+            this.sendError(msgId, -32001, `Resource not found: ${uri}`);
+            return;
+        }
+
+        try {
+            const content = resource.getData();
+            this.sendResponse(msgId, {
+                contents: [{
+                    uri: resource.uri,
+                    mimeType: resource.mimeType,
+                    text: content
+                }]
+            });
+        } catch (error) {
+            log('error', `Error reading resource ${uri}: ${error.message}`);
+            this.sendError(msgId, -32000, `Failed to read resource: ${error.message}`);
+        }
     }
 
 
