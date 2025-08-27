@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-node",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A comprehensive MCP (Model Context Protocol) server that exposes multiple resource types including file system, system information, and generated content",
   "main": "index.js",
   "bin": {
